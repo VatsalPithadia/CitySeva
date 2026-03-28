@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/complaint_model.dart';
 import '../../providers/complaint_provider.dart';
+import '../../services/image_verification_service.dart';
 import '../../utils/app_theme.dart';
 import 'complaint_detail.dart';
 
@@ -27,6 +28,8 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
   double? _lat, _lng;
   bool _fetchingLocation = false;
   bool _submitting = false;
+  bool _verifyingImages = false; // Image verification state
+  List<ImageVerificationResult> _imageVerificationResults = [];
   List<Complaint> _similarComplaints = [];
 
   @override
@@ -136,11 +139,29 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    // If no GPS, use 0,0 as fallback coords for manual address
+
+    // Verify images if any are uploaded
+    if (_images.isNotEmpty) {
+      setState(() => _verifyingImages = true);
+      final results = await ImageVerificationService.verifyImages(_images);
+      setState(() {
+        _verifyingImages = false;
+        _imageVerificationResults = results;
+      });
+
+      // Check if any image failed verification
+      final failed = results.where((r) => !r.isReal).toList();
+      if (failed.isNotEmpty) {
+        // Show warning dialog — block submission if image is clearly fake
+        final proceed = await _showImageVerificationDialog(results);
+        if (!proceed) return;
+      }
+    }
+
     setState(() => _submitting = true);
     final id = await context.read<ComplaintProvider>().submitComplaint(
-          title: _titleCtrl.text.trim(),
-          description: _descCtrl.text.trim(),
+          title: _selectedDept.label, // Auto-title from department
+          description: 'Reported via CitySeva app', // Default description
           department: _selectedDept,
           address: _locationCtrl.text.trim(),
           latitude: _lat ?? 0.0,
@@ -150,6 +171,74 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
     setState(() => _submitting = false);
     if (!mounted) return;
     _showSuccessDialog(id);
+  }
+
+  /// Show image verification result dialog
+  Future<bool> _showImageVerificationDialog(List<ImageVerificationResult> results) async {
+    final failed = results.where((r) => !r.isReal).length;
+    final warned = results.where((r) => r.warning && r.isReal).length;
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Icon(failed > 0 ? Icons.warning_amber_rounded : Icons.info_outline,
+                    color: failed > 0 ? AppColors.error : AppColors.warning),
+                const SizedBox(width: 8),
+                const Text('Image Verification', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  failed > 0
+                      ? '$failed image(s) may be AI-generated or not real photos.'
+                      : '$warned image(s) could not be fully verified.',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                ...results.asMap().entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                            e.value.isReal ? (e.value.warning ? Icons.warning_outlined : Icons.check_circle_outline) : Icons.cancel_outlined,
+                            color: e.value.isReal ? (e.value.warning ? AppColors.warning : AppColors.success) : AppColors.error,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text('Image ${e.key + 1}: ${e.value.reason}',
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    )),
+                if (failed > 0) ...
+                  [const SizedBox(height: 8),
+                  const Text('Please use your camera to take real photos of the issue.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary))],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Re-upload Images'),
+              ),
+              if (warned > 0 && failed == 0)
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Submit Anyway'),
+                ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   void _showSuccessDialog(String id) {
@@ -234,21 +323,6 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
           children: [
             _buildSectionHeader('Issue Details', Icons.report_problem_outlined),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(labelText: 'Title *', hintText: 'e.g. Large pothole on MG Road'),
-              validator: (v) => v!.trim().isEmpty ? 'Title is required' : null,
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _descCtrl,
-              decoration: const InputDecoration(labelText: 'Description *', hintText: 'Describe the issue in detail...', alignLabelWithHint: true),
-              maxLines: 4,
-              validator: (v) => v!.trim().isEmpty ? 'Description is required' : null,
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 16),
             _buildDepartmentDropdown(),
             const SizedBox(height: 24),
             _buildSectionHeader('Location', Icons.location_on_outlined),
@@ -344,12 +418,21 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
             _buildImagePicker(),
             const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: _submitting ? null : _submit,
+              onPressed: _submitting || _verifyingImages ? null : _submit,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: AppColors.primary,
               ),
-              child: _submitting
+              child: _verifyingImages
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                        SizedBox(width: 10),
+                        Text('Verifying Images...', style: TextStyle(fontSize: 15, color: Colors.white)),
+                      ],
+                    )
+                  : _submitting
                   ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,

@@ -132,6 +132,7 @@ class ComplaintProvider extends ChangeNotifier {
     _currentUser = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('current_user');
+    await prefs.remove('auth_token');
     notifyListeners();
   }
 

@@ -2,7 +2,49 @@ const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const nodemailer = require('nodemailer');
 const User = require('../models/User');
+
+// Nodemailer transporter using Gmail
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Send OTP via email
+router.post('/send-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ message: 'Email and OTP required' });
+
+    await transporter.sendMail({
+      from: `"CitySeva" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your CitySeva OTP Verification Code',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:12px">
+          <h2 style="color:#1565C0;text-align:center">CitySeva</h2>
+          <p style="color:#333">Hello,</p>
+          <p style="color:#333">Your OTP for registration is:</p>
+          <div style="text-align:center;margin:24px 0">
+            <span style="font-size:36px;font-weight:bold;letter-spacing:10px;color:#1565C0">${otp}</span>
+          </div>
+          <p style="color:#666;font-size:13px">This OTP is valid for <b>5 minutes</b>. Do not share it with anyone.</p>
+          <p style="color:#666;font-size:12px">If you did not request this, please ignore this email.</p>
+          <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+          <p style="color:#aaa;font-size:11px;text-align:center">CitySeva — From Complaints to Care, Instantly</p>
+        </div>
+      `,
+    });
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to send OTP: ' + err.message });
+  }
+});
 
 // Register
 router.post('/register', async (req, res) => {
