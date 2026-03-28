@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart';
-import '../../models/complaint_model.dart';
 import '../../providers/complaint_provider.dart';
+import '../../services/auth_service.dart';
 import '../../utils/app_theme.dart';
 import '../user/user_home.dart';
 import '../authority/authority_home.dart';
@@ -29,19 +28,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   String _selectedRole = 'citizen';
   bool _obscurePass = true;
+  bool _obscureRegPass = true;
   bool _isLoading = false;
-
-  // Demo accounts
-  final _demoAccounts = {
-    'citizen@demo.com': {'role': 'citizen', 'name': 'Rahul Sharma', 'phone': '9876543210'},
-    'authority@demo.com': {'role': 'authority', 'name': 'Officer Priya', 'phone': '9876543211'},
-    'govt@demo.com': {'role': 'government', 'name': 'Minister Raj', 'phone': '9876543212'},
-  };
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() => setState(() => _errorMessage = null));
   }
 
   @override
@@ -58,46 +53,45 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Future<void> _login() async {
     if (!_loginFormKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
+    setState(() { _isLoading = true; _errorMessage = null; });
 
-    final email = _emailCtrl.text.trim();
-    final demo = _demoAccounts[email];
-    final role = demo?['role'] ?? 'citizen';
-    final name = demo?['name'] ?? email.split('@')[0];
-    final phone = demo?['phone'] ?? '';
-
-    final user = UserModel(
-      id: const Uuid().v4(),
-      name: name,
-      email: email,
-      phone: phone,
-      role: role,
+    final result = await AuthService.login(
+      email: _emailCtrl.text.trim(),
+      password: _passCtrl.text.trim(),
     );
 
     if (!mounted) return;
-    await context.read<ComplaintProvider>().saveUser(user);
     setState(() => _isLoading = false);
-    _navigateByRole(role);
+
+    if (result.success && result.user != null) {
+      await context.read<ComplaintProvider>().saveUser(result.user!);
+      _navigateByRole(result.user!.role);
+    } else {
+      setState(() => _errorMessage = result.message);
+    }
   }
 
   Future<void> _register() async {
     if (!_registerFormKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
+    setState(() { _isLoading = true; _errorMessage = null; });
 
-    final user = UserModel(
-      id: const Uuid().v4(),
+    final result = await AuthService.register(
       name: _nameCtrl.text.trim(),
       email: _regEmailCtrl.text.trim(),
+      password: _regPassCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
       role: _selectedRole,
     );
 
     if (!mounted) return;
-    await context.read<ComplaintProvider>().saveUser(user);
     setState(() => _isLoading = false);
-    _navigateByRole(_selectedRole);
+
+    if (result.success && result.user != null) {
+      await context.read<ComplaintProvider>().saveUser(result.user!);
+      _navigateByRole(result.user!.role);
+    } else {
+      setState(() => _errorMessage = result.message);
+    }
   }
 
   void _navigateByRole(String role) {
@@ -162,6 +156,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         indicatorColor: AppColors.primary,
                         tabs: const [Tab(text: 'Login'), Tab(text: 'Register')],
                       ),
+                      // Error message
+                      if (_errorMessage != null)
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(_errorMessage!,
+                                    style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                              ),
+                            ],
+                          ),
+                        ),
                       Expanded(
                         child: TabBarView(
                           controller: _tabController,
@@ -187,8 +202,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildDemoChips(),
-            const SizedBox(height: 20),
             TextFormField(
               controller: _emailCtrl,
               decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
@@ -216,40 +229,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
+            const SizedBox(height: 16),
+            Center(
+              child: Text(
+                'Don\'t have an account? Tap Register above',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildDemoChips() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Demo Accounts (tap to fill)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: _demoAccounts.entries.map((e) {
-              final role = e.value['role']!;
-              return ActionChip(
-                label: Text(role[0].toUpperCase() + role.substring(1), style: const TextStyle(fontSize: 12)),
-                backgroundColor: AppColors.primary.withOpacity(0.1),
-                onPressed: () {
-                  _emailCtrl.text = e.key;
-                  _passCtrl.text = 'demo123';
-                },
-              );
-            }).toList(),
-          ),
-        ],
       ),
     );
   }
@@ -266,13 +254,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               controller: _nameCtrl,
               decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person_outline)),
               validator: (v) => v!.isEmpty ? 'Enter name' : null,
+              textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _phoneCtrl,
               decoration: const InputDecoration(labelText: 'Phone Number', prefixIcon: Icon(Icons.phone_outlined)),
               keyboardType: TextInputType.phone,
-              validator: (v) => v!.length < 10 ? 'Enter valid phone' : null,
+              validator: (v) => v!.length < 10 ? 'Enter valid 10 digit phone' : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -284,13 +273,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             const SizedBox(height: 16),
             TextFormField(
               controller: _regPassCtrl,
-              decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
-              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureRegPass ? Icons.visibility_off : Icons.visibility),
+                  onPressed: () => setState(() => _obscureRegPass = !_obscureRegPass),
+                ),
+              ),
+              obscureText: _obscureRegPass,
               validator: (v) => v!.length < 6 ? 'Min 6 characters' : null,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              initialValue: _selectedRole,
+              value: _selectedRole,
               decoration: const InputDecoration(labelText: 'Register As', prefixIcon: Icon(Icons.badge_outlined)),
               items: const [
                 DropdownMenuItem(value: 'citizen', child: Text('Citizen')),

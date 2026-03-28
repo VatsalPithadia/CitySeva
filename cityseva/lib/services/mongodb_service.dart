@@ -2,147 +2,111 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class MongoDBService {
-  // ─── Replace these with your MongoDB Atlas values ───────────────────────────
-  static const _appId = 'YOUR_APP_ID';         // e.g. cityseva-abcde
-  static const _apiKey = 'YOUR_DATA_API_KEY';  // from Atlas App Services
-  static const _cluster = 'Cluster0';          // your cluster name
-  static const _database = 'cityseva';
-  // ────────────────────────────────────────────────────────────────────────────
-
-  static const _baseUrl =
-      'https://data.mongodb-api.com/app/$_appId/endpoint/data/v1/action';
+  static const _baseUrl = 'https://cityseva-backend.onrender.com/api';
 
   static Map<String, String> get _headers => {
         'Content-Type': 'application/json',
-        'api-key': _apiKey,
       };
 
-  // ── Generic helpers ──────────────────────────────────────────────────────────
+  // ── Users ────────────────────────────────────────────────────────────────────
 
-  static Future<List<Map<String, dynamic>>> findAll(String collection,
-      {Map<String, dynamic>? filter}) async {
-    final res = await http
-        .post(
-          Uri.parse('$_baseUrl/find'),
-          headers: _headers,
-          body: jsonEncode({
-            'dataSource': _cluster,
-            'database': _database,
-            'collection': collection,
-            'filter': filter ?? {},
-            'sort': {'createdAt': -1},
-            'limit': 1000,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      return List<Map<String, dynamic>>.from(data['documents'] ?? []);
+  static Future<bool> saveUser(Map<String, dynamic> user) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl/users'),
+            headers: _headers,
+            body: jsonEncode(user),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
     }
+  }
+
+  // ── Complaints ───────────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getAllComplaints() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_baseUrl/complaints'), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List;
+        return list.map((e) => _sanitize(e)).toList();
+      }
+    } catch (_) {}
     return [];
   }
 
-  static Future<Map<String, dynamic>?> findOne(
-      String collection, Map<String, dynamic> filter) async {
-    final res = await http
-        .post(
-          Uri.parse('$_baseUrl/findOne'),
-          headers: _headers,
-          body: jsonEncode({
-            'dataSource': _cluster,
-            'database': _database,
-            'collection': collection,
-            'filter': filter,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      return data['document'];
+  static Future<bool> insertComplaint(Map<String, dynamic> complaint) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl/complaints'),
+            headers: _headers,
+            body: jsonEncode(complaint),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
     }
-    return null;
   }
 
-  static Future<bool> insertOne(
-      String collection, Map<String, dynamic> document) async {
-    final res = await http
-        .post(
-          Uri.parse('$_baseUrl/insertOne'),
-          headers: _headers,
-          body: jsonEncode({
-            'dataSource': _cluster,
-            'database': _database,
-            'collection': collection,
-            'document': document,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-    return res.statusCode == 201 || res.statusCode == 200;
+  static Future<bool> saveComplaint(Map<String, dynamic> complaint) async {
+    try {
+      final res = await http
+          .put(
+            Uri.parse('$_baseUrl/complaints/${complaint['id']}'),
+            headers: _headers,
+            body: jsonEncode(complaint),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
-  static Future<bool> updateOne(String collection,
-      Map<String, dynamic> filter, Map<String, dynamic> update) async {
-    final res = await http
-        .post(
-          Uri.parse('$_baseUrl/updateOne'),
-          headers: _headers,
-          body: jsonEncode({
-            'dataSource': _cluster,
-            'database': _database,
-            'collection': collection,
-            'filter': filter,
-            'update': {'\$set': update},
-            'upsert': true,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-    return res.statusCode == 200;
+  // ── Feedbacks ────────────────────────────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getAllFeedbacks() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_baseUrl/feedbacks'), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List;
+        return list.map((e) => _sanitize(e)).toList();
+      }
+    } catch (_) {}
+    return [];
   }
 
-  static Future<bool> deleteOne(
-      String collection, Map<String, dynamic> filter) async {
-    final res = await http
-        .post(
-          Uri.parse('$_baseUrl/deleteOne'),
-          headers: _headers,
-          body: jsonEncode({
-            'dataSource': _cluster,
-            'database': _database,
-            'collection': collection,
-            'filter': filter,
-          }),
-        )
-        .timeout(const Duration(seconds: 10));
-    return res.statusCode == 200;
+  static Future<bool> saveFeedback(Map<String, dynamic> feedback) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_baseUrl/feedbacks'),
+            headers: _headers,
+            body: jsonEncode(feedback),
+          )
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
-  // ── Collection-specific methods ──────────────────────────────────────────────
-
-  // Users
-  static Future<Map<String, dynamic>?> getUser(String email) =>
-      findOne('users', {'email': email});
-
-  static Future<bool> saveUser(Map<String, dynamic> user) =>
-      updateOne('users', {'id': user['id']}, user);
-
-  // Complaints
-  static Future<List<Map<String, dynamic>>> getAllComplaints() =>
-      findAll('complaints');
-
-  static Future<List<Map<String, dynamic>>> getUserComplaints(
-          String userId) =>
-      findAll('complaints', filter: {'userId': userId});
-
-  static Future<bool> saveComplaint(Map<String, dynamic> complaint) =>
-      updateOne('complaints', {'id': complaint['id']}, complaint);
-
-  static Future<bool> insertComplaint(Map<String, dynamic> complaint) =>
-      insertOne('complaints', complaint);
-
-  // Feedbacks
-  static Future<List<Map<String, dynamic>>> getAllFeedbacks() =>
-      findAll('feedbacks');
-
-  static Future<bool> saveFeedback(Map<String, dynamic> feedback) =>
-      insertOne('feedbacks', feedback);
+  // Remove MongoDB _id field
+  static Map<String, dynamic> _sanitize(Map<String, dynamic> doc) {
+    final map = Map<String, dynamic>.from(doc);
+    map.remove('_id');
+    map.remove('__v');
+    map.remove('createdAt');
+    map.remove('updatedAt');
+    return map;
+  }
 }
