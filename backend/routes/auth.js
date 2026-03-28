@@ -7,11 +7,23 @@ const User = require('../models/User');
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, phone, role } = req.body;
+    const { name, email, password, phone, role, accessCode } = req.body;
 
     // Check all fields
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
+    }
+
+    // Validate access code for authority and government
+    if (role === 'authority') {
+      if (accessCode !== 'AUTH2024') {
+        return res.status(403).json({ message: 'Invalid Authority Access Code. Contact your department admin.' });
+      }
+    }
+    if (role === 'government') {
+      if (accessCode !== 'GOVT2024') {
+        return res.status(403).json({ message: 'Invalid Government Access Code. Contact your department admin.' });
+      }
     }
 
     // Check if email already exists

@@ -25,10 +25,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _phoneCtrl = TextEditingController();
   final _regEmailCtrl = TextEditingController();
   final _regPassCtrl = TextEditingController();
+  final _accessCodeCtrl = TextEditingController();
 
   String _selectedRole = 'citizen';
   bool _obscurePass = true;
   bool _obscureRegPass = true;
+  bool _obscureAccessCode = true;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -48,6 +50,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _phoneCtrl.dispose();
     _regEmailCtrl.dispose();
     _regPassCtrl.dispose();
+    _accessCodeCtrl.dispose();
     super.dispose();
   }
 
@@ -81,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       password: _regPassCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
       role: _selectedRole,
+      accessCode: _accessCodeCtrl.text.trim(),
     );
 
     if (!mounted) return;
@@ -293,8 +297,55 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 DropdownMenuItem(value: 'authority', child: Text('Authority Officer')),
                 DropdownMenuItem(value: 'government', child: Text('Government Official')),
               ],
-              onChanged: (v) => setState(() => _selectedRole = v!),
+              onChanged: (v) => setState(() {
+                _selectedRole = v!;
+                _accessCodeCtrl.clear();
+              }),
             ),
+            if (_selectedRole == 'authority' || _selectedRole == 'government') ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: AppColors.warning, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedRole == 'authority'
+                            ? 'Authority registration requires an official access code provided by your department admin.'
+                            : 'Government registration requires an official access code provided by your department admin.',
+                        style: const TextStyle(fontSize: 12, color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _accessCodeCtrl,
+                decoration: InputDecoration(
+                  labelText: '${_selectedRole == 'authority' ? 'Authority' : 'Government'} Access Code *',
+                  prefixIcon: const Icon(Icons.vpn_key_outlined),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureAccessCode ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => _obscureAccessCode = !_obscureAccessCode),
+                  ),
+                ),
+                obscureText: _obscureAccessCode,
+                validator: (v) {
+                  if (_selectedRole != 'citizen' && (v == null || v.isEmpty)) {
+                    return 'Access code is required';
+                  }
+                  return null;
+                },
+              ),
+            ],
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _register,

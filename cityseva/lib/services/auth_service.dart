@@ -17,6 +17,7 @@ class AuthService {
     required String password,
     required String phone,
     required String role,
+    String accessCode = '',
   }) async {
     try {
       final res = await http
@@ -29,6 +30,7 @@ class AuthService {
               'password': password,
               'phone': phone,
               'role': role,
+              'accessCode': accessCode,
             }),
           )
           .timeout(const Duration(seconds: 15));
