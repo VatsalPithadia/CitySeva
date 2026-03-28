@@ -7,7 +7,9 @@ import 'package:provider/provider.dart';
 import '../../models/complaint_model.dart';
 import '../../providers/complaint_provider.dart';
 import '../../services/image_verification_service.dart';
+import '../../services/gps_camera_service.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/human_verification_widget.dart';
 import 'complaint_detail.dart';
 
 class ComplaintFormScreen extends StatefulWidget {
@@ -125,20 +127,43 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
     }
   }
 
+  // GPS Camera — takes photo and stamps location + time on it
   Future<void> _pickFromCamera() async {
     if (_images.length >= 5) {
       _showSnack('Maximum 5 images allowed');
       return;
     }
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.camera);
-    if (picked != null) {
-      setState(() => _images.add(File(picked.path)));
+    _showSnack('Opening GPS Camera...');
+    final result = await GpsCameraService.takeGeoTaggedPhoto();
+    if (result.cancelled) return;
+    if (result.error != null) {
+      _showSnack('Camera error: ${result.error}');
+      return;
+    }
+    if (result.success) {
+      setState(() => _images.add(result.file!));
+      // Auto-fill location from GPS photo if not already set
+      if (_lat == null && result.position != null) {
+        _lat = result.position!.latitude;
+        _lng = result.position!.longitude;
+        if (result.address != null && result.address!.isNotEmpty) {
+          _locationCtrl.text = result.address!;
+        }
+        _checkDuplicates();
+      }
+      _showSnack('GPS photo captured with location stamp', success: true);
     }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Human verification before submission
+    final isHuman = await showHumanVerification(context);
+    if (!isHuman) {
+      _showSnack('Please complete human verification to submit');
+      return;
+    }
 
     // Verify images if any are uploaded
     if (_images.isNotEmpty) {
@@ -299,8 +324,11 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
     });
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _showSnack(String msg, {bool success = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: success ? AppColors.success : null,
+    ));
   }
 
   @override
@@ -375,18 +403,6 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            // Manual location quick chips
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _locationChip('Near Home'),
-                _locationChip('Office Area'),
-                _locationChip('Market Area'),
-                _locationChip('Main Road'),
-                _locationChip('Colony'),
-              ],
-            ),
             if (_lat != null) ...[
               const SizedBox(height: 8),
               Row(
@@ -597,8 +613,8 @@ class _ComplaintFormScreenState extends State<ComplaintFormScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _pickFromCamera,
-                  icon: const Icon(Icons.camera_alt_outlined),
-                  label: const Text('Camera'),
+                  icon: const Icon(Icons.gps_fixed, size: 16),
+                  label: const Text('GPS Camera'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),

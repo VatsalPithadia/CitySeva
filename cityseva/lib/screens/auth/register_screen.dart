@@ -6,6 +6,7 @@ import '../../providers/complaint_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/otp_service.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/human_verification_widget.dart';
 import '../user/user_home.dart';
 import '../authority/authority_home.dart';
 import '../government/government_home.dart';
@@ -63,6 +64,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Step 1 → Send OTP and move to step 2
   Future<void> _proceedToOtp() async {
     if (!_step1Key.currentState!.validate()) return;
+
+    // Human verification before sending OTP
+    final isHuman = await showHumanVerification(context);
+    if (!isHuman) {
+      setState(() => _errorMessage = 'Please complete human verification to continue');
+      return;
+    }
+
     setState(() { _isLoading = true; _errorMessage = null; });
 
     final result = await OtpService.sendOtp(_emailCtrl.text.trim());
