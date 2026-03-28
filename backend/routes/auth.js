@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 
 // Register
@@ -9,21 +9,16 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password, phone, role, accessCode } = req.body;
 
-    // Check all fields
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
     // Validate access code for authority and government
-    if (role === 'authority') {
-      if (accessCode !== 'AUTH2024') {
-        return res.status(403).json({ message: 'Invalid Authority Access Code. Contact your department admin.' });
-      }
+    if (role === 'authority' && accessCode !== 'AUTH2024') {
+      return res.status(403).json({ message: 'Invalid Authority Access Code. Contact your department admin.' });
     }
-    if (role === 'government') {
-      if (accessCode !== 'GOVT2024') {
-        return res.status(403).json({ message: 'Invalid Government Access Code. Contact your department admin.' });
-      }
+    if (role === 'government' && accessCode !== 'GOVT2024') {
+      return res.status(403).json({ message: 'Invalid Government Access Code. Contact your department admin.' });
     }
 
     // Check if email already exists
@@ -32,18 +27,20 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Email already registered. Please login.' });
     }
 
-    // Create user
+    // Hash password directly here
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const user = new User({
       id: uuidv4(),
       name,
       email,
-      password,
+      password: hashedPassword,
       phone: phone || '',
       role: role || 'citizen',
     });
+
     await user.save();
 
-    // Generate token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
@@ -74,19 +71,16 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    // Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ message: 'No account found with this email. Please register.' });
     }
 
-    // Check password
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Incorrect password. Please try again.' });
     }
 
-    // Generate token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
